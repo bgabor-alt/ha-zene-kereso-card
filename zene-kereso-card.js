@@ -466,7 +466,7 @@ class ZeneEbresztoCard extends HTMLElement {
     const del = document.createElement("div"); del.className = "btn danger"; del.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>Törlés';
     del.addEventListener("click", () => { if (confirm("Törlöd ezt az ébresztőt?")) { this._open = null; this._write(slot, null); } });
     const test = document.createElement("div"); test.className = "btn sec"; test.innerHTML = '<ha-icon icon="mdi:play"></ha-icon>Próba most';
-    test.addEventListener("click", async () => { const [d, s] = this._config.script_test.split("."); await this._hass.callService(d, s, { slot: slot }); });
+    test.addEventListener("click", async () => { await this._hass.callService("script", "turn_on", { entity_id: this._config.script_test, variables: { slot: slot } }); });
     const save = document.createElement("div"); save.className = "btn"; save.innerHTML = '<ha-icon icon="mdi:check"></ha-icon>Mentés';
     save.addEventListener("click", async () => { await this._write(slot, cur); this._open = null; this._key = ""; this._render(); });
     acts.appendChild(del); acts.appendChild(test); acts.appendChild(save); ed.appendChild(acts);
