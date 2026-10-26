@@ -315,3 +315,163 @@ class ZeneKeresoCard extends HTMLElement {
 customElements.define("zene-kereso-card", ZeneKeresoCard);
 window.customCards = window.customCards || [];
 window.customCards.push({ type: "zene-kereso-card", name: "Zene kereső kártya", description: "Zene és rádió keresése Music Assistanten, lejátszás a kipipált szobákban." });
+
+/* ===================== Ébresztő kártya ===================== */
+const EB_DAYS = ["H", "K", "Sz", "Cs", "P", "Sz", "V"];
+class ZeneEbresztoCard extends HTMLElement {
+  static getStubConfig() { return { slots: ["input_text.ebreszto_1"] }; }
+  setConfig(config) {
+    this._config = Object.assign({
+      slots: [], script_test: "script.ebreszto_program_inditas", accent: "",
+      rooms: ["Előtér", "Konyha-étkező", "Nappali", "Dolgozószoba", "Hálószoba", "Gyerek nappali", "Zéli szoba", "Bogi szoba", "Edzőterem", "Terasz"],
+      group_names: ["input_text.zene_csoport_1_nev", "input_text.zene_csoport_2_nev", "input_text.zene_csoport_3_nev"],
+      favorites_sensor: "sensor.sonos_favorites",
+      music_extra: [["ma:library://playlist/10", "Chill lista"], ["ma:library://playlist/14", "Kedvenc dalok"], ["ma:library://playlist/1", "Minden kedvenc"], ["ma:library://playlist/8", "Végtelen mix"]],
+      title: "Ébresztők",
+    }, config);
+    this._open = null;
+    if (!this._root) this._build();
+  }
+  set hass(hass) { this._hass = hass; if (this._root) this._render(); }
+  getCardSize() { return 6; }
+  getGridOptions() { return { columns: "full", rows: "auto" }; }
+  _build() {
+    this._root = this.attachShadow({ mode: "open" });
+    this._root.innerHTML = `
+      <style>
+        :host { display:block; --zk-accent: var(--primary-color); }
+        ha-card { padding: 12px; box-sizing:border-box; overflow:hidden; }
+        .hdr { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+        .hdr .t { flex:1; font-size:18px; font-weight:500; color: var(--primary-text-color); }
+        .btn { cursor:pointer; color:#fff; background: var(--zk-accent); border-radius:16px; padding:6px 14px; font-size:14px; user-select:none; display:inline-flex; align-items:center; gap:6px; }
+        .btn.sec { background: transparent; color: var(--zk-accent); border:1px solid var(--zk-accent); }
+        .btn.danger { background: transparent; color: var(--error-color, #e53935); border:1px solid var(--error-color, #e53935); }
+        .row { background: var(--secondary-background-color, rgba(128,128,128,.12)); border-radius:14px; padding:10px 12px; margin-bottom:8px; }
+        .row.off { opacity:.6; }
+        .line { display:flex; align-items:center; gap:12px; cursor:pointer; }
+        .time { font-size:28px; font-weight:500; color: var(--primary-text-color); min-width:84px; }
+        .info { flex:1; min-width:0; }
+        .n { font-size:15px; color: var(--primary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .s { font-size:13px; color: var(--secondary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .sw { width:46px; height:26px; border-radius:13px; background: var(--disabled-color, #666); position:relative; flex:none; transition: background .2s; }
+        .sw.on { background: var(--zk-accent); }
+        .sw::after { content:""; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:left .2s; }
+        .sw.on::after { left:23px; }
+        .edit { margin-top:10px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+        .edit .full { grid-column: 1 / -1; }
+        label { display:block; font-size:12px; color: var(--secondary-text-color); margin-bottom:4px; }
+        input, select { width:100%; box-sizing:border-box; background: var(--card-background-color); color: var(--primary-text-color); border:1px solid var(--divider-color);
+                        border-radius:10px; padding:8px 10px; font-size:16px; outline:none; -webkit-appearance:none; appearance:none; }
+        input[type=time] { font-size:22px; }
+        select option { color:#000; background:#fff; }
+        .days { display:flex; gap:6px; flex-wrap:wrap; }
+        .day { width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px;
+               border:1px solid var(--divider-color); color: var(--secondary-text-color); user-select:none; }
+        .day.on { background: var(--zk-accent); color:#fff; border-color: var(--zk-accent); }
+        .vol { display:flex; align-items:center; gap:8px; }
+        .vol input[type=range] { padding:0; border:none; background: transparent; accent-color: var(--zk-accent); }
+        .vol span { min-width:40px; text-align:right; color: var(--primary-text-color); }
+        .acts { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+        .empty { color: var(--secondary-text-color); font-size:14px; padding:6px 2px; }
+      </style>
+      <ha-card>
+        <div class="hdr"><div class="t"></div><div class="btn add"><ha-icon icon="mdi:plus"></ha-icon>Új ébresztő</div></div>
+        <div class="list"></div>
+      </ha-card>`;
+    if (this._config.accent) this.style.setProperty("--zk-accent", this._config.accent);
+    this._root.querySelector(".t").textContent = this._config.title;
+    this._list = this._root.querySelector(".list");
+    this._root.querySelector(".add").addEventListener("click", () => this._add());
+  }
+  _read(slot) {
+    const st = this._hass.states[slot];
+    if (!st || !st.state || st.state === "unknown") return null;
+    try { const p = JSON.parse(st.state); return (p && p.t) ? p : null; } catch (e) { return null; }
+  }
+  async _write(slot, p) {
+    const v = p ? JSON.stringify(p) : "";
+    await this._hass.callService("input_text", "set_value", { entity_id: slot, value: v });
+  }
+  _whereOptions() {
+    const o = [["Mindenhol", "Mindenhol"]];
+    this._config.group_names.forEach((e, i) => { const st = this._hass.states[e]; o.push(["Csoport " + (i + 1), (st ? st.state : "Csoport " + (i + 1))]); });
+    this._config.rooms.forEach(r => o.push([r, r]));
+    return o;
+  }
+  _musicOptions() {
+    const o = [];
+    const st = this._hass.states[this._config.favorites_sensor];
+    const items = (st && st.attributes && st.attributes.items) || {};
+    for (const [id, name] of Object.entries(items)) o.push(["fav:" + id, name]);
+    for (const [id, name] of this._config.music_extra) o.push([id, name]);
+    return o;
+  }
+  _label(v, opts) { const f = opts.find(x => x[0] === v); return f ? f[1] : v; }
+  _daysText(d) {
+    const s = (d || []).slice().sort().join(",");
+    if (s === "0,1,2,3,4") return "Hétköznap"; if (s === "5,6") return "Hétvége"; if (s === "0,1,2,3,4,5,6") return "Minden nap";
+    if (!s) return "Egyszer";
+    return (d || []).slice().sort().map(i => EB_DAYS[i]).join(" ");
+  }
+  _add() {
+    const slot = this._config.slots.find(s => !this._read(s));
+    if (!slot) { alert("Nincs több szabad ébresztő-hely (" + this._config.slots.length + ")."); return; }
+    const p = { n: "Ébresztő", on: 1, t: "07:00", d: [0, 1, 2, 3, 4], w: "Hálószoba", m: (this._musicOptions()[0] || ["fav:FV:2/0"])[0], v: 20 };
+    this._write(slot, p).then(() => { this._open = slot; });
+  }
+  _render() {
+    if (!this._hass || !this._list) return;
+    const key = this._config.slots.map(s => (this._hass.states[s] || {}).state).join("|") + "#" + this._open;
+    if (key === this._key) return; this._key = key;
+    this._list.innerHTML = "";
+    const W = this._whereOptions(), M = this._musicOptions();
+    let n = 0;
+    for (const slot of this._config.slots) {
+      const p = this._read(slot); if (!p) continue; n++;
+      const row = document.createElement("div"); row.className = "row" + (p.on ? "" : " off");
+      const line = document.createElement("div"); line.className = "line";
+      const time = document.createElement("div"); time.className = "time"; time.textContent = p.t;
+      const info = document.createElement("div"); info.className = "info";
+      const nm = document.createElement("div"); nm.className = "n"; nm.textContent = p.n || "Ébresztő";
+      const sub = document.createElement("div"); sub.className = "s"; sub.textContent = this._daysText(p.d) + " · " + this._label(p.w, W) + " · " + this._label(p.m, M) + " · " + (p.v || 20) + "%";
+      info.appendChild(nm); info.appendChild(sub);
+      const sw = document.createElement("div"); sw.className = "sw" + (p.on ? " on" : "");
+      sw.addEventListener("click", e => { e.stopPropagation(); this._write(slot, Object.assign({}, p, { on: p.on ? 0 : 1 })); });
+      line.appendChild(time); line.appendChild(info); line.appendChild(sw);
+      line.addEventListener("click", () => { this._open = (this._open === slot) ? null : slot; this._key = ""; this._render(); });
+      row.appendChild(line);
+      if (this._open === slot) row.appendChild(this._editor(slot, p, W, M));
+      this._list.appendChild(row);
+    }
+    if (!n) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Nincs ébresztő. Koppints az „Új ébresztő” gombra."; this._list.appendChild(e); }
+  }
+  _editor(slot, p, W, M) {
+    const ed = document.createElement("div"); ed.className = "edit";
+    const cur = Object.assign({}, p);
+    const field = (lbl, el, full) => { const w = document.createElement("div"); if (full) w.className = "full"; const l = document.createElement("label"); l.textContent = lbl; w.appendChild(l); w.appendChild(el); return w; };
+    const name = document.createElement("input"); name.type = "text"; name.value = cur.n || ""; name.maxLength = 30; name.addEventListener("input", () => cur.n = name.value);
+    const time = document.createElement("input"); time.type = "time"; time.value = cur.t; time.addEventListener("input", () => { if (time.value) cur.t = time.value; });
+    const days = document.createElement("div"); days.className = "days";
+    EB_DAYS.forEach((d, i) => { const c = document.createElement("div"); c.className = "day" + ((cur.d || []).includes(i) ? " on" : ""); c.textContent = d;
+      c.addEventListener("click", () => { const set = new Set(cur.d || []); set.has(i) ? set.delete(i) : set.add(i); cur.d = [...set].sort(); c.classList.toggle("on"); }); days.appendChild(c); });
+    const where = document.createElement("select"); W.forEach(([v, l]) => { const o = document.createElement("option"); o.value = v; o.textContent = l; if (v === cur.w) o.selected = true; where.appendChild(o); }); where.addEventListener("change", () => cur.w = where.value);
+    const music = document.createElement("select"); M.forEach(([v, l]) => { const o = document.createElement("option"); o.value = v; o.textContent = l; if (v === cur.m) o.selected = true; music.appendChild(o); }); music.addEventListener("change", () => cur.m = music.value);
+    const vol = document.createElement("div"); vol.className = "vol"; const r = document.createElement("input"); r.type = "range"; r.min = 5; r.max = 60; r.step = 5; r.value = cur.v || 20;
+    const vs = document.createElement("span"); vs.textContent = r.value + "%"; r.addEventListener("input", () => { cur.v = +r.value; vs.textContent = r.value + "%"; }); vol.appendChild(r); vol.appendChild(vs);
+    ed.appendChild(field("Név", name)); ed.appendChild(field("Időpont", time));
+    ed.appendChild(field("Napok", days, true));
+    ed.appendChild(field("Hol szóljon", where)); ed.appendChild(field("Mi szóljon", music));
+    ed.appendChild(field("Célhangerő", vol, true));
+    const acts = document.createElement("div"); acts.className = "acts full";
+    const del = document.createElement("div"); del.className = "btn danger"; del.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>Törlés';
+    del.addEventListener("click", () => { if (confirm("Törlöd ezt az ébresztőt?")) { this._open = null; this._write(slot, null); } });
+    const test = document.createElement("div"); test.className = "btn sec"; test.innerHTML = '<ha-icon icon="mdi:play"></ha-icon>Próba most';
+    test.addEventListener("click", async () => { const [d, s] = this._config.script_test.split("."); await this._hass.callService(d, s, { slot: slot }); });
+    const save = document.createElement("div"); save.className = "btn"; save.innerHTML = '<ha-icon icon="mdi:check"></ha-icon>Mentés';
+    save.addEventListener("click", async () => { await this._write(slot, cur); this._open = null; this._key = ""; this._render(); });
+    acts.appendChild(del); acts.appendChild(test); acts.appendChild(save); ed.appendChild(acts);
+    return ed;
+  }
+}
+customElements.define("zene-ebreszto-card", ZeneEbresztoCard);
+window.customCards.push({ type: "zene-ebreszto-card", name: "Zene ébresztő kártya", description: "Több zenés ébresztő-program, helyben szerkeszthető." });
