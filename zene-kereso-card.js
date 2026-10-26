@@ -37,16 +37,16 @@ class ZeneKeresoCard extends HTMLElement {
     this._root.innerHTML = `
       <style>
         :host { display:block; }
-        ha-card { padding: 12px; }
-        .top { display:flex; gap:8px; align-items:center; }
-        .tabs { display:flex; gap:6px; }
+        ha-card { padding: 12px; box-sizing: border-box; overflow: hidden; }
+        .top { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+        .tabs { display:flex; gap:6px; flex: none; }
         .tab { padding:6px 12px; border-radius:16px; border:1px solid var(--divider-color); cursor:pointer;
                color: var(--secondary-text-color); font-size: 14px; user-select:none; }
         .tab.on { background: var(--primary-color); color:#fff; border-color: var(--primary-color); }
-        .box { flex:1; display:flex; align-items:center; gap:8px; background: var(--secondary-background-color, rgba(128,128,128,.18));
+        .box { flex: 1 1 180px; min-width: 0; box-sizing: border-box; display:flex; align-items:center; gap:8px; background: var(--secondary-background-color, rgba(128,128,128,.18));
                border:1px solid var(--divider-color); border-radius: 12px; padding: 6px 10px; }
         .box ha-icon { color: var(--secondary-text-color); }
-        input { flex:1; background: transparent; border:none; outline:none; font-size:17px; color: var(--primary-text-color); min-width: 0; }
+        input { flex:1; width: 100%; min-width: 0; box-sizing: border-box; -webkit-appearance: none; appearance: none; background: transparent; border:none; outline:none; font-size:17px; color: var(--primary-text-color); min-width: 0; }
         input::placeholder { color: var(--secondary-text-color); opacity: .8; }
         .clear { cursor:pointer; color: var(--secondary-text-color); }
         .status { font-size:13px; color: var(--secondary-text-color); margin: 8px 2px 0; min-height: 16px; }
@@ -62,6 +62,7 @@ class ZeneKeresoCard extends HTMLElement {
         .t2 { font-size:12px; color: var(--secondary-text-color); }
         .play { color: var(--primary-color); flex:none; }
         .hint { font-size:13px; color: var(--secondary-text-color); padding: 8px 2px; }
+      input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-appearance: none; }
       </style>
       <ha-card>
         <div class="top">
@@ -108,11 +109,7 @@ class ZeneKeresoCard extends HTMLElement {
     this._input.value = ""; this._clearEl.style.display = "none";
     this._results = []; this._renderList(); this._statusEl.textContent = "";
   }
-  _renderTarget() {
-    if (!this._hass || !this._statusEl || this._results.length) return;
-    const hely = this._hass.states["sensor.zene_kereso_hely"];
-    if (hely && !this._statusEl.textContent) this._statusEl.textContent = "Ide szól: " + hely.state;
-  }
+  _renderTarget() {}
   async _search() {
     const q = this._input.value.trim();
     if (q.length < 2 || !this._hass) return;
