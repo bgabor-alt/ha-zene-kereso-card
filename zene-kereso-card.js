@@ -20,6 +20,8 @@ class ZeneKeresoCard extends HTMLElement {
       radio_api: ["https://de1.api.radio-browser.info", "https://at1.api.radio-browser.info", "https://nl1.api.radio-browser.info"],
       favorites_sensor: "sensor.sonos_favorites",
       favorites_script: "script.zene_lejatszas",
+      favorites_mode: "select",
+      favorites_label: "Apple rádiók (Sonos-kedvencek)",
       accent: "",
     }, config);
     this._mode = "music";
@@ -31,12 +33,22 @@ class ZeneKeresoCard extends HTMLElement {
   }
   set hass(hass) { this._hass = hass; if (this._root) { this._renderTarget(); this._renderFavs(); } }
   _renderFavs() {
-    const st = this._hass.states[this._config.favorites_sensor];
+    const mode = this._config.favorites_mode;
+    const st = this._config.favorites_sensor ? this._hass.states[this._config.favorites_sensor] : null;
     const items = (st && st.attributes && st.attributes.items) || {};
-    const key = JSON.stringify(items);
+    const key = mode + JSON.stringify(items);
     if (key === this._favKey) return;
     this._favKey = key;
-    this._favsEl.innerHTML = "";
+    this._favsEl.innerHTML = ""; this._favsEl.style.display = "none";
+    this._favSelWrap.style.display = "none";
+    if (mode === "none" || !Object.keys(items).length) return;
+    if (mode === "select") {
+      this._favSel.innerHTML = "";
+      const ph = document.createElement("option"); ph.value = ""; ph.textContent = this._config.favorites_label; this._favSel.appendChild(ph);
+      for (const [id, name] of Object.entries(items)) { const o = document.createElement("option"); o.value = id; o.textContent = name; this._favSel.appendChild(o); }
+      this._favSelWrap.style.display = "";
+      return;
+    }
     for (const [id, name] of Object.entries(items)) {
       const chip = document.createElement("div"); chip.className = "fav";
       const ic = document.createElement("ha-icon"); ic.icon = "mdi:star";
@@ -51,7 +63,7 @@ class ZeneKeresoCard extends HTMLElement {
       });
       this._favsEl.appendChild(chip);
     }
-    this._favsEl.style.display = Object.keys(items).length ? "" : "none";
+    this._favsEl.style.display = "";
   }
   getCardSize() { return 4; }
   getGridOptions() { return { columns: "full", rows: "auto" }; }
@@ -91,6 +103,13 @@ class ZeneKeresoCard extends HTMLElement {
         .play { color: var(--zk-accent); flex:none; }
         .hint { font-size:13px; color: var(--secondary-text-color); padding: 8px 2px; }
         .favs { display:flex; flex-wrap:wrap; gap:8px; margin: 0 0 10px; }
+        .favsel { display:flex; align-items:center; gap:8px; margin: 0 0 10px; background: var(--secondary-background-color, rgba(128,128,128,.18));
+                  border:1px solid var(--divider-color); border-radius:12px; padding: 6px 10px; }
+        .favsel ha-icon { color: var(--zk-accent); flex:none; }
+        .favsel select { flex:1; min-width:0; background: transparent; border:none; outline:none; font-size:16px; color: var(--primary-text-color);
+                         -webkit-appearance:none; appearance:none; padding: 6px 0; }
+        .favsel select option { color: #000; background: #fff; }
+        .favsel .arrow { color: var(--secondary-text-color); flex:none; }
         .fav { display:flex; align-items:center; gap:6px; padding:8px 14px; border-radius:18px; cursor:pointer; font-size:15px;
                background: var(--secondary-background-color, rgba(128,128,128,.15)); color: var(--primary-text-color); border:1px solid var(--divider-color); user-select:none; }
         .fav:active { opacity:.7; }
@@ -104,6 +123,7 @@ class ZeneKeresoCard extends HTMLElement {
       input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-appearance: none; }
       </style>
       <ha-card>
+        <div class="favsel" style="display:none"><ha-icon icon="mdi:apple"></ha-icon><select></select><ha-icon class="arrow" icon="mdi:menu-down"></ha-icon></div>
         <div class="favs"></div>
         <div class="top">
           <div class="tabs">
@@ -120,6 +140,18 @@ class ZeneKeresoCard extends HTMLElement {
         <div class="list"></div>
       </ha-card>`;
     this._favsEl = this._root.querySelector(".favs");
+    this._favSelWrap = this._root.querySelector(".favsel");
+    this._favSel = this._root.querySelector(".favsel select");
+    this._favSel.addEventListener("change", async () => {
+      const id = this._favSel.value; if (!id) return;
+      const name = this._favSel.options[this._favSel.selectedIndex].textContent;
+      try {
+        const [domain, name2] = this._config.favorites_script.split(".");
+        await this._hass.callService(domain, name2, { fav_id: id });
+        this._statusEl.textContent = "▶ " + name;
+      } catch (e) { this._statusEl.textContent = "Nem sikerült: " + (e.message || e); }
+      setTimeout(() => { this._favSel.value = ""; }, 1500);
+    });
     this._input = this._root.querySelector("input");
     this._list = this._root.querySelector(".list");
     this._statusEl = this._root.querySelector(".status");
