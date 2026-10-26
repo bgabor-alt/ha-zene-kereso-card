@@ -325,6 +325,8 @@ class ZeneEbresztoCard extends HTMLElement {
       slots: [], script_test: "script.ebreszto_program_inditas", accent: "",
       rooms: ["Előtér", "Konyha-étkező", "Nappali", "Dolgozószoba", "Hálószoba", "Gyerek nappali", "Zéli szoba", "Bogi szoba", "Edzőterem", "Terasz"],
       group_names: ["input_text.zene_csoport_1_nev", "input_text.zene_csoport_2_nev", "input_text.zene_csoport_3_nev"],
+      group_prefix: "input_boolean.zene_csoport_",
+      room_keys: { "Előtér": "eloter", "Konyha-étkező": "konyha_etkezo", "Nappali": "nappali", "Dolgozószoba": "dolgozoszoba", "Hálószoba": "haloszoba", "Gyerek nappali": "gyerek_nappali", "Zéli szoba": "zeli_szoba", "Bogi szoba": "bogi_szoba", "Edzőterem": "edzoterem", "Terasz": "terasz" },
       favorites_sensor: "sensor.sonos_favorites",
       music_extra: [["ma:library://playlist/10", "Chill lista"], ["ma:library://playlist/14", "Kedvenc dalok"], ["ma:library://playlist/1", "Minden kedvenc"], ["ma:library://playlist/8", "Végtelen mix"]],
       title: "Ébresztők",
@@ -368,6 +370,10 @@ class ZeneEbresztoCard extends HTMLElement {
         .day { width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px;
                border:1px solid var(--divider-color); color: var(--secondary-text-color); user-select:none; }
         .day.on { background: var(--zk-accent); color:#fff; border-color: var(--zk-accent); }
+        .rooms { display:flex; flex-wrap:wrap; gap:6px; }
+        .chip { padding:8px 12px; border-radius:16px; border:1px solid var(--divider-color); color: var(--secondary-text-color); cursor:pointer; font-size:14px; user-select:none; }
+        .chip.on { background: var(--zk-accent); color:#fff; border-color: var(--zk-accent); }
+        .chip.grp { border-style: dashed; color: var(--primary-text-color); }
         .vol { display:flex; align-items:center; gap:8px; }
         .vol input[type=range] { padding:0; border:none; background: transparent; accent-color: var(--zk-accent); }
         .vol span { min-width:40px; text-align:right; color: var(--primary-text-color); }
@@ -406,7 +412,8 @@ class ZeneEbresztoCard extends HTMLElement {
     for (const [id, name] of this._config.music_extra) o.push([id, name]);
     return o;
   }
-  _label(v, opts) { const f = opts.find(x => x[0] === v); return f ? f[1] : v; }
+  _label(v, opts) { if (Array.isArray(v)) { const all = this._config.rooms; return v.length === all.length ? "Mindenhol" : (v.length ? v.join(", ") : "—"); } const f = opts.find(x => x[0] === v); return f ? f[1] : v; }
+  _groupRooms(g) { return this._config.rooms.filter(r => { const st = this._hass.states[this._config.group_prefix + g + "_" + this._config.room_keys[r]]; return st && st.state === "on"; }); }
   _daysText(d) {
     const s = (d || []).slice().sort().join(",");
     if (s === "0,1,2,3,4") return "Hétköznap"; if (s === "5,6") return "Hétvége"; if (s === "0,1,2,3,4,5,6") return "Minden nap";
@@ -416,7 +423,7 @@ class ZeneEbresztoCard extends HTMLElement {
   _add() {
     const slot = this._config.slots.find(s => !this._read(s));
     if (!slot) { alert("Nincs több szabad ébresztő-hely (" + this._config.slots.length + ")."); return; }
-    const p = { n: "Ébresztő", on: 1, t: "07:00", d: [0, 1, 2, 3, 4], w: "Hálószoba", m: (this._musicOptions()[0] || ["fav:FV:2/0"])[0], v: 20 };
+    const p = { n: "Ébresztő", on: 1, t: "07:00", d: [0, 1, 2, 3, 4], w: ["Hálószoba"], m: (this._musicOptions()[0] || ["fav:FV:2/0"])[0], v: 20 };
     this._write(slot, p).then(() => { this._open = slot; });
   }
   _render() {
@@ -454,13 +461,22 @@ class ZeneEbresztoCard extends HTMLElement {
     const days = document.createElement("div"); days.className = "days";
     EB_DAYS.forEach((d, i) => { const c = document.createElement("div"); c.className = "day" + ((cur.d || []).includes(i) ? " on" : ""); c.textContent = d;
       c.addEventListener("click", () => { const set = new Set(cur.d || []); set.has(i) ? set.delete(i) : set.add(i); cur.d = [...set].sort(); c.classList.toggle("on"); }); days.appendChild(c); });
-    const where = document.createElement("select"); W.forEach(([v, l]) => { const o = document.createElement("option"); o.value = v; o.textContent = l; if (v === cur.w) o.selected = true; where.appendChild(o); }); where.addEventListener("change", () => cur.w = where.value);
+    const where = document.createElement("div"); where.className = "rooms";
+    if (!Array.isArray(cur.w)) cur.w = (cur.w === "Mindenhol") ? this._config.rooms.slice() : (String(cur.w).startsWith("Csoport ") ? this._groupRooms(String(cur.w).slice(-1)) : [cur.w]);
+    const chips = {};
+    const sync = () => { this._config.rooms.forEach(r => chips[r].classList.toggle("on", cur.w.includes(r))); };
+    const grp = (label, rooms) => { const c = document.createElement("div"); c.className = "chip grp"; c.textContent = label; c.addEventListener("click", () => { cur.w = rooms(); sync(); }); where.appendChild(c); };
+    grp("Mindenhol", () => this._config.rooms.slice());
+    this._config.group_names.forEach((e, i) => { const st = this._hass.states[e]; grp(st ? st.state : "Csoport " + (i + 1), () => this._groupRooms(i + 1)); });
+    this._config.rooms.forEach(r => { const c = document.createElement("div"); c.className = "chip"; c.textContent = r; chips[r] = c;
+      c.addEventListener("click", () => { cur.w = cur.w.includes(r) ? cur.w.filter(x => x !== r) : cur.w.concat([r]); sync(); }); where.appendChild(c); });
+    sync();
     const music = document.createElement("select"); M.forEach(([v, l]) => { const o = document.createElement("option"); o.value = v; o.textContent = l; if (v === cur.m) o.selected = true; music.appendChild(o); }); music.addEventListener("change", () => cur.m = music.value);
     const vol = document.createElement("div"); vol.className = "vol"; const r = document.createElement("input"); r.type = "range"; r.min = 5; r.max = 60; r.step = 5; r.value = cur.v || 20;
     const vs = document.createElement("span"); vs.textContent = r.value + "%"; r.addEventListener("input", () => { cur.v = +r.value; vs.textContent = r.value + "%"; }); vol.appendChild(r); vol.appendChild(vs);
     ed.appendChild(field("Név", name)); ed.appendChild(field("Időpont", time));
     ed.appendChild(field("Napok", days, true));
-    ed.appendChild(field("Hol szóljon", where)); ed.appendChild(field("Mi szóljon", music));
+    ed.appendChild(field("Hol szóljon", where, true)); ed.appendChild(field("Mi szóljon", music, true));
     ed.appendChild(field("Célhangerő", vol, true));
     const acts = document.createElement("div"); acts.className = "acts full";
     const del = document.createElement("div"); del.className = "btn danger"; del.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>Törlés';
