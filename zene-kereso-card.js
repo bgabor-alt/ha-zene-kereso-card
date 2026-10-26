@@ -359,6 +359,9 @@ class ZeneEbresztoCard extends HTMLElement {
         .sw.on { background: var(--zk-accent); }
         .sw::after { content:""; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:left .2s; }
         .sw.on::after { left:23px; }
+        .x { flex:none; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer;
+             color: var(--secondary-text-color); border:1px solid var(--divider-color); }
+        .x:active { color: var(--error-color, #e53935); border-color: var(--error-color, #e53935); }
         .edit { margin-top:10px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
         .edit .full { grid-column: 1 / -1; }
         label { display:block; font-size:12px; color: var(--secondary-text-color); margin-bottom:4px; }
@@ -449,7 +452,9 @@ class ZeneEbresztoCard extends HTMLElement {
       info.appendChild(nm); info.appendChild(sub);
       const sw = document.createElement("div"); sw.className = "sw" + (p.on ? " on" : "");
       sw.addEventListener("click", e => { e.stopPropagation(); this._write(slot, Object.assign({}, p, { on: p.on ? 0 : 1 })); });
-      line.appendChild(time); line.appendChild(info); line.appendChild(sw);
+      const x = document.createElement("div"); x.className = "x"; const xi = document.createElement("ha-icon"); xi.icon = "mdi:close"; x.appendChild(xi);
+      x.addEventListener("click", e => { e.stopPropagation(); if (confirm("Törlöd ezt az ébresztőt?")) { if (this._open === slot) this._open = null; this._write(slot, null); } });
+      line.appendChild(time); line.appendChild(info); line.appendChild(sw); line.appendChild(x);
       line.addEventListener("click", () => { this._open = (this._open === slot) ? null : slot; this._key = ""; this._render(); });
       row.appendChild(line);
       if (this._open === slot) row.appendChild(this._editor(slot, p, W, M));
@@ -486,13 +491,11 @@ class ZeneEbresztoCard extends HTMLElement {
     ed.appendChild(field("Hol szóljon", where, true)); ed.appendChild(field("Mi szóljon", music, true));
     ed.appendChild(field("Célhangerő", vol, true));
     const acts = document.createElement("div"); acts.className = "acts full";
-    const del = document.createElement("div"); del.className = "btn danger"; del.innerHTML = '<ha-icon icon="mdi:delete-outline"></ha-icon>Törlés';
-    del.addEventListener("click", () => { if (confirm("Törlöd ezt az ébresztőt?")) { this._open = null; this._write(slot, null); } });
     const test = document.createElement("div"); test.className = "btn sec"; test.innerHTML = '<ha-icon icon="mdi:play"></ha-icon>Próba most';
     test.addEventListener("click", async () => { await this._hass.callService("script", "turn_on", { entity_id: this._config.script_test, variables: { slot: slot } }); });
     const save = document.createElement("div"); save.className = "btn"; save.innerHTML = '<ha-icon icon="mdi:check"></ha-icon>Mentés';
     save.addEventListener("click", async () => { await this._write(slot, cur); this._open = null; this._key = ""; this._render(); });
-    acts.appendChild(del); acts.appendChild(test); acts.appendChild(save); ed.appendChild(acts);
+    acts.appendChild(test); acts.appendChild(save); ed.appendChild(acts);
     return ed;
   }
 }
