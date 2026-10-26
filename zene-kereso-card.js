@@ -20,6 +20,7 @@ class ZeneKeresoCard extends HTMLElement {
     }, config);
     this._mode = "music";
     this._results = [];
+    this._stack = [];
     this._query = "";
     this._status = "";
     if (!this._root) this._build();
@@ -62,6 +63,12 @@ class ZeneKeresoCard extends HTMLElement {
         .t2 { font-size:12px; color: var(--secondary-text-color); }
         .play { color: var(--primary-color); flex:none; }
         .hint { font-size:13px; color: var(--secondary-text-color); padding: 8px 2px; }
+        .sec { font-size:12px; letter-spacing:.04em; text-transform:uppercase; color: var(--secondary-text-color); margin: 10px 4px 2px; }
+        .open { color: var(--secondary-text-color); flex:none; }
+        .nav { display:flex; align-items:center; gap:10px; margin-top:8px; padding:6px 4px; }
+        .nav .back { cursor:pointer; color: var(--primary-color); }
+        .nav .nt { flex:1; min-width:0; font-size:15px; color: var(--primary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .nav .all { cursor:pointer; color:#fff; background: var(--primary-color); border-radius:14px; padding:4px 10px; font-size:13px; flex:none; }
       input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-appearance: none; }
       </style>
       <ha-card>
@@ -107,7 +114,7 @@ class ZeneKeresoCard extends HTMLElement {
   }
   _reset() {
     this._input.value = ""; this._clearEl.style.display = "none";
-    this._results = []; this._renderList(); this._statusEl.textContent = "";
+    this._results = []; this._stack = []; this._renderList(); this._statusEl.textContent = "";
   }
   _renderTarget() {}
   async _search() {
@@ -125,6 +132,7 @@ class ZeneKeresoCard extends HTMLElement {
       const isRadio = it => (it.media_class === "channel") || /radio/i.test(it.media_content_id || "");
       items = items.filter(it => this._mode === "radio" ? isRadio(it) : !isRadio(it));
       this._results = items.slice(0, this._config.max_results);
+      this._stack = [];
       this._renderList();
       if (!this._results.length) {
         this._statusEl.textContent = this._mode === "radio"
@@ -136,22 +144,68 @@ class ZeneKeresoCard extends HTMLElement {
       this._statusEl.textContent = "Hiba a keresésnél: " + (e.message || e);
     }
   }
+  _isContainer(it) { return ["album", "playlist", "artist", "directory"].includes(it.media_class) || it.can_expand === true; }
+  _row(it, inContainer) {
+    const row = document.createElement("div"); row.className = "item";
+    const th = document.createElement("div"); th.className = "thumb";
+    if (it.thumbnail) { const img = document.createElement("img"); img.src = it.thumbnail; img.loading = "lazy"; th.appendChild(img); }
+    else { const ic = document.createElement("ha-icon"); ic.icon = ICONS[it.media_class] || ICONS.default; th.appendChild(ic); }
+    const txt = document.createElement("div"); txt.className = "txt";
+    const t1 = document.createElement("div"); t1.className = "t1"; t1.textContent = it.title || "";
+    const t2 = document.createElement("div"); t2.className = "t2"; t2.textContent = this._label(it);
+    txt.appendChild(t1); txt.appendChild(t2);
+    row.appendChild(th); row.appendChild(txt);
+    if (this._isContainer(it)) {
+      const open = document.createElement("ha-icon"); open.className = "open"; open.icon = "mdi:chevron-right";
+      const pl = document.createElement("ha-icon"); pl.className = "play"; pl.icon = "mdi:play-circle";
+      pl.addEventListener("click", e => { e.stopPropagation(); this._play(it); });
+      row.appendChild(pl); row.appendChild(open);
+      row.addEventListener("click", () => this._openContainer(it));
+    } else {
+      const pl = document.createElement("ha-icon"); pl.className = "play"; pl.icon = "mdi:play-circle";
+      row.appendChild(pl);
+      row.addEventListener("click", () => this._play(it));
+    }
+    return row;
+  }
   _renderList() {
     this._list.innerHTML = "";
-    for (const it of this._results) {
-      const row = document.createElement("div"); row.className = "item";
-      const th = document.createElement("div"); th.className = "thumb";
-      if (it.thumbnail) { const img = document.createElement("img"); img.src = it.thumbnail; img.loading = "lazy"; th.appendChild(img); }
-      else { const ic = document.createElement("ha-icon"); ic.icon = ICONS[it.media_class] || ICONS.default; th.appendChild(ic); }
-      const txt = document.createElement("div"); txt.className = "txt";
-      const t1 = document.createElement("div"); t1.className = "t1"; t1.textContent = it.title || "";
-      const t2 = document.createElement("div"); t2.className = "t2"; t2.textContent = this._label(it);
-      txt.appendChild(t1); txt.appendChild(t2);
-      const pl = document.createElement("ha-icon"); pl.className = "play"; pl.icon = "mdi:play-circle";
-      row.appendChild(th); row.appendChild(txt); row.appendChild(pl);
-      row.addEventListener("click", () => this._play(it));
-      this._list.appendChild(row);
+    if (this._stack.length) {
+      const top = this._stack[this._stack.length - 1];
+      const nav = document.createElement("div"); nav.className = "nav";
+      const back = document.createElement("ha-icon"); back.className = "back"; back.icon = "mdi:arrow-left";
+      back.addEventListener("click", () => { this._stack.pop(); this._renderList(); });
+      const nt = document.createElement("div"); nt.className = "nt"; nt.textContent = top.item.title || "";
+      const all = document.createElement("div"); all.className = "all"; all.textContent = "▶ Mind";
+      all.addEventListener("click", () => this._play(top.item));
+      nav.appendChild(back); nav.appendChild(nt); nav.appendChild(all);
+      this._list.appendChild(nav);
+      for (const it of top.children) this._list.appendChild(this._row(it, true));
+      return;
     }
+    const groups = [["track", "Dalok"], ["album", "Albumok"], ["playlist", "Lejátszási listák"], ["artist", "Előadók"], ["channel", "Rádiók"]];
+    const used = new Set();
+    for (const [cls, title] of groups) {
+      const items = this._results.filter(it => it.media_class === cls);
+      if (!items.length) continue;
+      const h = document.createElement("div"); h.className = "sec"; h.textContent = title; this._list.appendChild(h);
+      for (const it of items) { used.add(it); this._list.appendChild(this._row(it, false)); }
+    }
+    const rest = this._results.filter(it => !used.has(it));
+    for (const it of rest) this._list.appendChild(this._row(it, false));
+  }
+  async _openContainer(it) {
+    if (!this._hass) return;
+    const entity = this._target();
+    this._statusEl.textContent = "Megnyitás…";
+    try {
+      const res = await this._hass.callWS({ type: "media_player/browse_media", entity_id: entity,
+        media_content_type: it.media_content_type || it.media_class, media_content_id: it.media_content_id });
+      const children = (res && res.children) || [];
+      this._stack.push({ item: it, children });
+      this._statusEl.textContent = children.length + " elem";
+      this._renderList();
+    } catch (e) { this._statusEl.textContent = "Nem sikerült megnyitni: " + (e.message || e); }
   }
   _label(it) {
     const m = { track: "dal", album: "album", playlist: "lejátszási lista", artist: "előadó", channel: "rádió", podcast: "podcast" };
@@ -169,7 +223,7 @@ class ZeneKeresoCard extends HTMLElement {
         entity_id: entity, media_content_id: it.media_content_id, media_content_type: it.media_content_type || "music",
       });
       this._statusEl.textContent = "▶ " + (it.title || "");
-      this._results = []; this._renderList();
+      this._results = []; this._stack = []; this._renderList();
       this._input.value = ""; this._clearEl.style.display = "none";
     } catch (e) {
       this._statusEl.textContent = "Nem sikerült elindítani: " + (e.message || e);
