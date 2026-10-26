@@ -375,7 +375,12 @@ class ZeneEbresztoCard extends HTMLElement {
         .chip.on { background: var(--zk-accent); color:#fff; border-color: var(--zk-accent); }
         .chip.grp { border-style: dashed; color: var(--primary-text-color); }
         .vol { display:flex; align-items:center; gap:8px; }
-        .vol input[type=range] { padding:0; border:none; background: transparent; accent-color: var(--zk-accent); }
+        .vol input[type=range] { -webkit-appearance:none; appearance:none; width:100%; height:40px; padding:0; margin:0; border:none; border-radius:12px; cursor:pointer;
+             background: linear-gradient(to right, var(--zk-accent) 0 var(--val, 20%), rgba(128,128,128,.25) var(--val, 20%) 100%); }
+        .vol input[type=range]::-webkit-slider-runnable-track { height:40px; background: transparent; border-radius:12px; }
+        .vol input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:28px; margin-top:6px; border-radius:7px; background:#fff; box-shadow: 0 0 2px rgba(0,0,0,.5); }
+        .vol input[type=range]::-moz-range-track { height:40px; background: transparent; border-radius:12px; }
+        .vol input[type=range]::-moz-range-thumb { width:14px; height:28px; border:none; border-radius:7px; background:#fff; }
         .vol span { min-width:40px; text-align:right; color: var(--primary-text-color); }
         .acts { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
         .empty { color: var(--secondary-text-color); font-size:14px; padding:6px 2px; }
@@ -473,7 +478,9 @@ class ZeneEbresztoCard extends HTMLElement {
     sync();
     const music = document.createElement("select"); M.forEach(([v, l]) => { const o = document.createElement("option"); o.value = v; o.textContent = l; if (v === cur.m) o.selected = true; music.appendChild(o); }); music.addEventListener("change", () => cur.m = music.value);
     const vol = document.createElement("div"); vol.className = "vol"; const r = document.createElement("input"); r.type = "range"; r.min = 5; r.max = 60; r.step = 5; r.value = cur.v || 20;
-    const vs = document.createElement("span"); vs.textContent = r.value + "%"; r.addEventListener("input", () => { cur.v = +r.value; vs.textContent = r.value + "%"; }); vol.appendChild(r); vol.appendChild(vs);
+    const vs = document.createElement("span"); vs.textContent = r.value + "%";
+    const paint = () => r.style.setProperty("--val", ((r.value - r.min) / (r.max - r.min) * 100) + "%");
+    r.addEventListener("input", () => { cur.v = +r.value; vs.textContent = r.value + "%"; paint(); }); paint(); vol.appendChild(r); vol.appendChild(vs);
     ed.appendChild(field("Név", name)); ed.appendChild(field("Időpont", time));
     ed.appendChild(field("Napok", days, true));
     ed.appendChild(field("Hol szóljon", where, true)); ed.appendChild(field("Mi szóljon", music, true));
