@@ -20,6 +20,7 @@ class ZeneKeresoCard extends HTMLElement {
       radio_api: ["https://de1.api.radio-browser.info", "https://at1.api.radio-browser.info", "https://nl1.api.radio-browser.info"],
       favorites_sensor: "sensor.sonos_favorites",
       favorites_script: "script.zene_lejatszas",
+      accent: "",
     }, config);
     this._mode = "music";
     this._results = [];
@@ -63,16 +64,16 @@ class ZeneKeresoCard extends HTMLElement {
     this._root = this.attachShadow({ mode: "open" });
     this._root.innerHTML = `
       <style>
-        :host { display:block; }
+        :host { display:block; --zk-accent: var(--primary-color); }
         ha-card { padding: 12px; box-sizing: border-box; overflow: hidden; }
         .top { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
         .tabs { display:flex; gap:6px; flex: none; }
         .tab { padding:6px 12px; border-radius:16px; border:1px solid var(--divider-color); cursor:pointer;
                color: var(--secondary-text-color); font-size: 14px; user-select:none; }
-        .tab.on { background: var(--primary-color); color:#fff; border-color: var(--primary-color); }
+        .tab.on { background: var(--zk-accent); color:#fff; border-color: var(--zk-accent); }
         .box { flex: 1 1 180px; min-width: 0; box-sizing: border-box; display:flex; align-items:center; gap:8px; background: var(--secondary-background-color, rgba(128,128,128,.18));
                border:1px solid var(--divider-color); border-radius: 12px; padding: 6px 10px; }
-        .box ha-icon { color: var(--secondary-text-color); }
+        .box ha-icon { color: var(--zk-accent); }
         input { flex:1; width: 100%; min-width: 0; box-sizing: border-box; -webkit-appearance: none; appearance: none; background: transparent; border:none; outline:none; font-size:17px; color: var(--primary-text-color); min-width: 0; }
         input::placeholder { color: var(--secondary-text-color); opacity: .8; }
         .clear { cursor:pointer; color: var(--secondary-text-color); }
@@ -87,19 +88,19 @@ class ZeneKeresoCard extends HTMLElement {
         .txt { flex:1; min-width:0; }
         .t1 { font-size:15px; color: var(--primary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .t2 { font-size:12px; color: var(--secondary-text-color); }
-        .play { color: var(--primary-color); flex:none; }
+        .play { color: var(--zk-accent); flex:none; }
         .hint { font-size:13px; color: var(--secondary-text-color); padding: 8px 2px; }
         .favs { display:flex; flex-wrap:wrap; gap:8px; margin: 0 0 10px; }
         .fav { display:flex; align-items:center; gap:6px; padding:8px 14px; border-radius:18px; cursor:pointer; font-size:15px;
                background: var(--secondary-background-color, rgba(128,128,128,.15)); color: var(--primary-text-color); border:1px solid var(--divider-color); user-select:none; }
         .fav:active { opacity:.7; }
-        .fav ha-icon { color: var(--primary-color); --mdc-icon-size: 20px; }
+        .fav ha-icon { color: var(--zk-accent); --mdc-icon-size: 20px; }
         .sec { font-size:12px; letter-spacing:.04em; text-transform:uppercase; color: var(--secondary-text-color); margin: 10px 4px 2px; }
         .open { color: var(--secondary-text-color); flex:none; }
         .nav { display:flex; align-items:center; gap:10px; margin-top:8px; padding:6px 4px; }
-        .nav .back { cursor:pointer; color: var(--primary-color); }
+        .nav .back { cursor:pointer; color: var(--zk-accent); }
         .nav .nt { flex:1; min-width:0; font-size:15px; color: var(--primary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .nav .all { cursor:pointer; color:#fff; background: var(--primary-color); border-radius:14px; padding:4px 10px; font-size:13px; flex:none; }
+        .nav .all { cursor:pointer; color:#fff; background: var(--zk-accent); border-radius:14px; padding:4px 10px; font-size:13px; flex:none; }
       input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-appearance: none; }
       </style>
       <ha-card>
@@ -124,6 +125,7 @@ class ZeneKeresoCard extends HTMLElement {
     this._statusEl = this._root.querySelector(".status");
     this._clearEl = this._root.querySelector(".clear");
     this._input.placeholder = this._config.placeholder_music;
+    if (this._config.accent) this.style.setProperty("--zk-accent", this._config.accent);
     this._root.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => this._setMode(t.dataset.mode)));
     this._input.addEventListener("input", () => this._onInput());
     this._input.addEventListener("keydown", e => { if (e.key === "Enter") { clearTimeout(this._timer); this._search(); } });
