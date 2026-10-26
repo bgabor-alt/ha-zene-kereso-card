@@ -18,6 +18,8 @@ class ZeneKeresoCard extends HTMLElement {
       volume_if_idle: 0.15,
       max_results: 20,
       radio_api: ["https://de1.api.radio-browser.info", "https://at1.api.radio-browser.info", "https://nl1.api.radio-browser.info"],
+      favorites_sensor: "sensor.sonos_favorites",
+      favorites_script: "script.zene_lejatszas",
     }, config);
     this._mode = "music";
     this._results = [];
@@ -26,7 +28,30 @@ class ZeneKeresoCard extends HTMLElement {
     this._status = "";
     if (!this._root) this._build();
   }
-  set hass(hass) { this._hass = hass; if (this._root) this._renderTarget(); }
+  set hass(hass) { this._hass = hass; if (this._root) { this._renderTarget(); this._renderFavs(); } }
+  _renderFavs() {
+    const st = this._hass.states[this._config.favorites_sensor];
+    const items = (st && st.attributes && st.attributes.items) || {};
+    const key = JSON.stringify(items);
+    if (key === this._favKey) return;
+    this._favKey = key;
+    this._favsEl.innerHTML = "";
+    for (const [id, name] of Object.entries(items)) {
+      const chip = document.createElement("div"); chip.className = "fav";
+      const ic = document.createElement("ha-icon"); ic.icon = "mdi:star";
+      const t = document.createElement("span"); t.textContent = name;
+      chip.appendChild(ic); chip.appendChild(t);
+      chip.addEventListener("click", async () => {
+        try {
+          const [domain, name2] = this._config.favorites_script.split(".");
+          await this._hass.callService(domain, name2, { fav_id: id });
+          this._statusEl.textContent = "▶ " + name;
+        } catch (e) { this._statusEl.textContent = "Nem sikerült: " + (e.message || e); }
+      });
+      this._favsEl.appendChild(chip);
+    }
+    this._favsEl.style.display = Object.keys(items).length ? "" : "none";
+  }
   getCardSize() { return 4; }
   getGridOptions() { return { columns: "full", rows: "auto" }; }
   _target() {
@@ -64,6 +89,11 @@ class ZeneKeresoCard extends HTMLElement {
         .t2 { font-size:12px; color: var(--secondary-text-color); }
         .play { color: var(--primary-color); flex:none; }
         .hint { font-size:13px; color: var(--secondary-text-color); padding: 8px 2px; }
+        .favs { display:flex; flex-wrap:wrap; gap:8px; margin: 0 0 10px; }
+        .fav { display:flex; align-items:center; gap:6px; padding:8px 14px; border-radius:18px; cursor:pointer; font-size:15px;
+               background: var(--secondary-background-color, rgba(128,128,128,.15)); color: var(--primary-text-color); border:1px solid var(--divider-color); user-select:none; }
+        .fav:active { opacity:.7; }
+        .fav ha-icon { color: var(--primary-color); --mdc-icon-size: 20px; }
         .sec { font-size:12px; letter-spacing:.04em; text-transform:uppercase; color: var(--secondary-text-color); margin: 10px 4px 2px; }
         .open { color: var(--secondary-text-color); flex:none; }
         .nav { display:flex; align-items:center; gap:10px; margin-top:8px; padding:6px 4px; }
@@ -73,6 +103,7 @@ class ZeneKeresoCard extends HTMLElement {
       input::-webkit-search-decoration, input::-webkit-search-cancel-button { -webkit-appearance: none; }
       </style>
       <ha-card>
+        <div class="favs"></div>
         <div class="top">
           <div class="tabs">
             <div class="tab on" data-mode="music">Zene</div>
@@ -87,6 +118,7 @@ class ZeneKeresoCard extends HTMLElement {
         <div class="status"></div>
         <div class="list"></div>
       </ha-card>`;
+    this._favsEl = this._root.querySelector(".favs");
     this._input = this._root.querySelector("input");
     this._list = this._root.querySelector(".list");
     this._statusEl = this._root.querySelector(".status");
