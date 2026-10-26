@@ -17,6 +17,7 @@ class ZeneKeresoCard extends HTMLElement {
       placeholder_radio: "Rádióállomás neve…",
       volume_if_idle: 0.15,
       max_results: 20,
+      radio_api: ["https://de1.api.radio-browser.info", "https://at1.api.radio-browser.info", "https://nl1.api.radio-browser.info"],
     }, config);
     this._mode = "music";
     this._results = [];
@@ -124,25 +125,39 @@ class ZeneKeresoCard extends HTMLElement {
     this._statusEl.textContent = "Keresés…";
     const mySeq = (this._seq = (this._seq || 0) + 1);
     try {
-      const msg = { type: "media_player/search_media", entity_id: entity, search_query: q };
-      if (this._mode === "radio") msg.media_filter_classes = ["channel"];
-      const res = await this._hass.callWS(msg);
+      let items = [];
+      if (this._mode === "radio") {
+        items = await this._searchRadio(q);
+      } else {
+        const res = await this._hass.callWS({ type: "media_player/search_media", entity_id: entity, search_query: q });
+        items = ((res && res.result) || []).filter(it => it.media_class !== "channel");
+      }
       if (mySeq !== this._seq) return;
-      let items = (res && res.result) || [];
-      const isRadio = it => (it.media_class === "channel") || /radio/i.test(it.media_content_id || "");
-      items = items.filter(it => this._mode === "radio" ? isRadio(it) : !isRadio(it));
       this._results = items.slice(0, this._config.max_results);
       this._stack = [];
       this._renderList();
-      if (!this._results.length) {
-        this._statusEl.textContent = this._mode === "radio"
-          ? "Nincs rádiótalálat. (A Music Assistantban a Radio Browser szolgáltatót be kell kapcsolni.)"
-          : "Nincs találat.";
-      } else this._statusEl.textContent = this._results.length + " találat";
+      this._statusEl.textContent = this._results.length ? this._results.length + " találat" : "Nincs találat.";
     } catch (e) {
       if (mySeq !== this._seq) return;
       this._statusEl.textContent = "Hiba a keresésnél: " + (e.message || e);
     }
+  }
+  async _searchRadio(q) {
+    const params = "?name=" + encodeURIComponent(q) + "&limit=" + this._config.max_results + "&order=votes&reverse=true&hidebroken=true";
+    let lastErr = null;
+    for (const base of this._config.radio_api) {
+      try {
+        const r = await fetch(base + "/json/stations/search" + params, { headers: { "User-Agent": "ha-zene-kereso-card/1.2" } });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const st = await r.json();
+        return st.map(s => ({
+          title: s.name, media_class: "channel", media_content_type: "music",
+          media_content_id: s.url_resolved || s.url, thumbnail: s.favicon || "",
+          extra: [s.country, s.codec ? s.codec + (s.bitrate ? " " + s.bitrate + " kb/s" : "") : "", s.tags ? s.tags.split(",").slice(0, 3).join(", ") : ""].filter(Boolean).join(" · "),
+        }));
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr || new Error("Rádió-adatbázis nem elérhető");
   }
   _isContainer(it) { return ["album", "playlist", "artist", "directory"].includes(it.media_class) || it.can_expand === true; }
   _row(it, inContainer) {
@@ -208,6 +223,7 @@ class ZeneKeresoCard extends HTMLElement {
     } catch (e) { this._statusEl.textContent = "Nem sikerült megnyitni: " + (e.message || e); }
   }
   _label(it) {
+    if (it.extra) return it.extra;
     const m = { track: "dal", album: "album", playlist: "lejátszási lista", artist: "előadó", channel: "rádió", podcast: "podcast" };
     const prov = /^apple_music/.test(it.media_content_id || "") ? " · Apple Music" : /^library:/.test(it.media_content_id || "") ? " · könyvtár" : "";
     return (m[it.media_class] || it.media_class || "") + prov;
